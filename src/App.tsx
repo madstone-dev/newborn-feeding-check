@@ -3,7 +3,6 @@ import {
   AlertTriangle,
   Baby,
   CalendarDays,
-  Clock3,
   Droplets,
   Plus,
   RotateCcw,
@@ -18,14 +17,9 @@ type FeedEntry = {
 const FEED_ENTRIES_KEY = 'newborn-feeding-check.entries'
 const BIRTH_DATE_KEY = 'newborn-feeding-check.birth-date'
 const WEIGHT_KEY = 'newborn-feeding-check.weight'
-const FEED_COUNT_KEY = 'newborn-feeding-check.feed-count'
 
 const mlFormatter = new Intl.NumberFormat('ko-KR', {
   maximumFractionDigits: 0,
-})
-const timeFormatter = new Intl.DateTimeFormat('ko-KR', {
-  hour: '2-digit',
-  minute: '2-digit',
 })
 
 function getStoredNumber(key: string, fallback: number) {
@@ -82,50 +76,40 @@ function isToday(date: Date) {
   )
 }
 
-function roundToFive(value: number) {
-  return Math.round(value / 5) * 5
-}
-
 function formatMl(value: number) {
   return `${mlFormatter.format(Math.max(0, Math.round(value)))}ml`
 }
 
-function getFeedingGuide(ageDays: number, weight: number, feedsPerDay: number) {
+function getFeedingGuide(ageDays: number, weight: number) {
+  const dailyMin = weight * 150
+  const dailyMax = Math.min(weight * 160, 1000)
+
   if (ageDays <= 3) {
     return {
-      mode: '초기 수유 기준',
-      dailyMin: 30 * feedsPerDay,
-      dailyMax: 60 * feedsPerDay,
-      perFeedMin: 30,
-      perFeedMax: 60,
+      mode: '체중 기준 목표 · 초기 주의',
+      dailyMin,
+      dailyMax,
       note:
-        '생후 첫 며칠은 체중 공식보다 1회 30~60ml, 2~3시간 간격을 우선 참고합니다.',
+        '오늘 목표 총량은 체중으로 계산합니다. 다만 생후 첫 며칠은 실제 수유량이 적을 수 있어 의료진 안내를 우선하세요.',
     }
   }
 
   if (ageDays <= 7) {
     return {
-      mode: '전환 구간 기준',
-      dailyMin: 60 * feedsPerDay,
-      dailyMax: Math.min(90 * feedsPerDay, 1000),
-      perFeedMin: 60,
-      perFeedMax: 90,
+      mode: '체중 기준 목표 · 전환 구간',
+      dailyMin,
+      dailyMax,
       note:
-        '생후 4~7일은 먹는 양이 빠르게 늘어나는 구간이라 아기 상태와 병원 안내를 함께 봅니다.',
+        '생후 4~7일은 먹는 양이 빠르게 늘어나는 구간입니다. 오늘 목표 총량과 아기 상태를 함께 확인하세요.',
     }
   }
-
-  const dailyMin = weight * 150
-  const dailyMax = Math.min(weight * 160, 1000)
 
   return {
     mode: '체중 공식 기준',
     dailyMin,
     dailyMax,
-    perFeedMin: dailyMin / feedsPerDay,
-    perFeedMax: dailyMax / feedsPerDay,
     note:
-      '생후 8일 이후부터는 몸무게 기준 하루 권장량을 기본값으로 계산합니다.',
+      '현재 몸무게 기준 하루 목표 총량입니다. 오늘 누적량이 최소 목표에 가까워지는지 확인하세요.',
   }
 }
 
@@ -134,9 +118,6 @@ function App() {
     () => window.localStorage.getItem(BIRTH_DATE_KEY) ?? getTodayInputDate(),
   )
   const [weight, setWeight] = useState(() => getStoredNumber(WEIGHT_KEY, 4))
-  const [feedsPerDay, setFeedsPerDay] = useState(() =>
-    getStoredNumber(FEED_COUNT_KEY, 8),
-  )
   const [feedAmount, setFeedAmount] = useState(60)
   const [entries, setEntries] = useState<FeedEntry[]>(() => getStoredEntries())
 
@@ -147,10 +128,6 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem(WEIGHT_KEY, String(weight))
   }, [weight])
-
-  useEffect(() => {
-    window.localStorage.setItem(FEED_COUNT_KEY, String(feedsPerDay))
-  }, [feedsPerDay])
 
   useEffect(() => {
     window.localStorage.setItem(FEED_ENTRIES_KEY, JSON.stringify(entries))
@@ -169,11 +146,9 @@ function App() {
   )
 
   const ageDays = getAgeDays(birthDate)
-  const guide = getFeedingGuide(ageDays, weight, feedsPerDay)
+  const guide = getFeedingGuide(ageDays, weight)
   const dailyMin = guide.dailyMin
   const dailyMax = guide.dailyMax
-  const perFeedMin = guide.perFeedMin
-  const perFeedMax = guide.perFeedMax
   const quickAmounts =
     ageDays <= 3
       ? [30, 40, 50, 60]
@@ -182,16 +157,8 @@ function App() {
         : [60, 80, 100, 120]
   const totalAmount = todayEntries.reduce((sum, entry) => sum + entry.amount, 0)
   const remainingAmount = Math.max(0, dailyMin - totalAmount)
-  const progress = Math.min(100, Math.round((totalAmount / dailyMin) * 100))
-  const lastEntry = todayEntries[0]
-  const nextFeedText = lastEntry
-    ? timeFormatter.format(
-        new Date(
-          new Date(lastEntry.createdAt).getTime() +
-            (24 / feedsPerDay) * 60 * 60 * 1000,
-        ),
-      )
-    : '첫 기록 전'
+  const progress =
+    dailyMin > 0 ? Math.min(100, Math.round((totalAmount / dailyMin) * 100)) : 0
 
   function addFeed(amount = feedAmount) {
     const normalizedAmount = Math.max(0, Math.round(amount))
@@ -250,8 +217,8 @@ function App() {
           </div>
         </section>
 
-        <section className="grid grid-cols-2 gap-3">
-          <label className="col-span-2 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <section className="grid grid-cols-1 gap-3">
+          <label className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <span className="text-sm font-semibold text-slate-600">
               출생일
             </span>
@@ -289,31 +256,6 @@ function App() {
               </span>
             </div>
           </label>
-
-          <label className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-            <span className="text-sm font-semibold text-slate-600">
-              목표 횟수
-            </span>
-            <div className="mt-3 flex items-end gap-2">
-              <input
-                className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-3 text-2xl font-bold outline-none focus:border-sky-500 focus:bg-white"
-                inputMode="numeric"
-                min="7"
-                max="12"
-                step="1"
-                type="number"
-                value={feedsPerDay}
-                onChange={(event) =>
-                  setFeedsPerDay(
-                    Math.min(12, Math.max(7, Number(event.target.value))),
-                  )
-                }
-              />
-              <span className="pb-3 text-sm font-semibold text-slate-500">
-                회
-              </span>
-            </div>
-          </label>
         </section>
 
         <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
@@ -348,19 +290,14 @@ function App() {
               value={formatMl(totalAmount)}
             />
             <SummaryMetric
-              icon={<Clock3 size={16} aria-hidden="true" />}
-              label="다음 예상"
-              value={nextFeedText}
+              icon={<Droplets size={16} aria-hidden="true" />}
+              label="입력 횟수"
+              value={`${todayEntries.length}회`}
             />
           </div>
 
           <div className="mt-4 rounded-lg bg-slate-50 px-3 py-3 text-sm leading-relaxed text-slate-600">
-            {guide.note} 1회 권장량은{' '}
-            <strong className="text-slate-900">
-              {formatMl(roundToFive(perFeedMin))}~
-              {formatMl(roundToFive(perFeedMax))}
-            </strong>
-            입니다.
+            {guide.note}
           </div>
         </section>
 
