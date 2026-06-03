@@ -236,6 +236,20 @@ function App() {
           </div>
         </header>
 
+        <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
+          <div className="flex gap-3">
+            <AlertTriangle
+              className="mt-0.5 shrink-0"
+              size={20}
+              aria-hidden="true"
+            />
+            <p className="text-sm leading-relaxed">
+              기록과 계산 보조 도구입니다. 조산아, 저체중아, 황달, 심한
+              구토, 탈수 의심, 체중 증가 부진은 의료진 상담을 우선하세요.
+            </p>
+          </div>
+        </section>
+
         <section className="grid grid-cols-2 gap-3">
           <label className="col-span-2 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <span className="text-sm font-semibold text-slate-600">
@@ -416,20 +430,6 @@ function App() {
         </section>
 
         <AdSlot label="광고 영역" />
-
-        <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
-          <div className="flex gap-3">
-            <AlertTriangle
-              className="mt-0.5 shrink-0"
-              size={20}
-              aria-hidden="true"
-            />
-            <p className="text-sm leading-relaxed">
-              기록과 계산 보조 도구입니다. 조산아, 저체중아, 황달, 심한
-              구토, 탈수 의심, 체중 증가 부진은 의료진 상담을 우선하세요.
-            </p>
-          </div>
-        </section>
       </div>
 
       <div className="fixed inset-x-0 bottom-0 border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur sm:hidden">
