@@ -7,7 +7,6 @@ import {
   Droplets,
   Plus,
   RotateCcw,
-  Trash2,
 } from 'lucide-react'
 
 type FeedEntry = {
@@ -16,13 +15,11 @@ type FeedEntry = {
   createdAt: string
 }
 
-type StatusTone = 'neutral' | 'low' | 'good' | 'caution' | 'danger'
-
 const FEED_ENTRIES_KEY = 'newborn-feeding-check.entries'
+const BIRTH_DATE_KEY = 'newborn-feeding-check.birth-date'
 const WEIGHT_KEY = 'newborn-feeding-check.weight'
 const FEED_COUNT_KEY = 'newborn-feeding-check.feed-count'
 
-const quickAmounts = [40, 60, 80, 100]
 const mlFormatter = new Intl.NumberFormat('ko-KR', {
   maximumFractionDigits: 0,
 })
@@ -36,6 +33,34 @@ function getStoredNumber(key: string, fallback: number) {
   const value = stored ? Number(stored) : fallback
 
   return Number.isFinite(value) ? value : fallback
+}
+
+function getTodayInputDate() {
+  const now = new Date()
+  const localDate = new Date(now.getTime() - now.getTimezoneOffset() * 60_000)
+
+  return localDate.toISOString().slice(0, 10)
+}
+
+function getAgeDays(birthDate: string) {
+  if (!birthDate) {
+    return 0
+  }
+
+  const birthTime = new Date(`${birthDate}T00:00:00`).getTime()
+  if (!Number.isFinite(birthTime)) {
+    return 0
+  }
+
+  const today = new Date()
+  const todayTime = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate(),
+  ).getTime()
+  const dayMs = 24 * 60 * 60 * 1000
+
+  return Math.max(0, Math.floor((todayTime - birthTime) / dayMs))
 }
 
 function getStoredEntries() {
@@ -65,73 +90,59 @@ function formatMl(value: number) {
   return `${mlFormatter.format(Math.max(0, Math.round(value)))}ml`
 }
 
-function getStatus(totalAmount: number, dailyMin: number, dailyMax: number) {
-  if (totalAmount === 0) {
+function getFeedingGuide(ageDays: number, weight: number, feedsPerDay: number) {
+  if (ageDays <= 3) {
     return {
-      label: '기록 대기',
-      tone: 'neutral' as StatusTone,
-      message: '첫 수유를 기록하면 오늘 누적량을 바로 계산합니다.',
+      mode: '초기 수유 기준',
+      dailyMin: 30 * feedsPerDay,
+      dailyMax: 60 * feedsPerDay,
+      perFeedMin: 30,
+      perFeedMax: 60,
+      note:
+        '생후 첫 며칠은 체중 공식보다 1회 30~60ml, 2~3시간 간격을 우선 참고합니다.',
     }
   }
 
-  if (totalAmount >= 1000) {
+  if (ageDays <= 7) {
     return {
-      label: '상담 권장',
-      tone: 'danger' as StatusTone,
-      message: '분유 기준 하루 1000ml 이상은 의료진 안내를 우선하세요.',
+      mode: '전환 구간 기준',
+      dailyMin: 60 * feedsPerDay,
+      dailyMax: Math.min(90 * feedsPerDay, 1000),
+      perFeedMin: 60,
+      perFeedMax: 90,
+      note:
+        '생후 4~7일은 먹는 양이 빠르게 늘어나는 구간이라 아기 상태와 병원 안내를 함께 봅니다.',
     }
   }
 
-  if (totalAmount >= 950) {
-    return {
-      label: '상한 주의',
-      tone: 'caution' as StatusTone,
-      message: '오늘 총량이 분유 상한에 가까워지고 있습니다.',
-    }
-  }
-
-  if (totalAmount >= dailyMin && totalAmount <= dailyMax) {
-    return {
-      label: '권장 범위',
-      tone: 'good' as StatusTone,
-      message: '현재 몸무게 기준 하루 권장 범위 안에 있습니다.',
-    }
-  }
-
-  if (totalAmount < dailyMin) {
-    return {
-      label: '목표 전',
-      tone: 'low' as StatusTone,
-      message: '아직 오늘 권장량까지 여유가 있습니다.',
-    }
-  }
+  const dailyMin = weight * 150
+  const dailyMax = Math.min(weight * 160, 1000)
 
   return {
-    label: '권장 초과',
-    tone: 'caution' as StatusTone,
-    message: '권장 범위를 넘었지만 분유 상한 전입니다.',
+    mode: '체중 공식 기준',
+    dailyMin,
+    dailyMax,
+    perFeedMin: dailyMin / feedsPerDay,
+    perFeedMax: dailyMax / feedsPerDay,
+    note:
+      '생후 8일 이후부터는 몸무게 기준 하루 권장량을 기본값으로 계산합니다.',
   }
-}
-
-function getToneClasses(tone: StatusTone) {
-  const tones = {
-    neutral: 'border-slate-200 bg-white text-slate-700',
-    low: 'border-sky-200 bg-sky-50 text-sky-800',
-    good: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-    caution: 'border-amber-200 bg-amber-50 text-amber-800',
-    danger: 'border-rose-200 bg-rose-50 text-rose-800',
-  }
-
-  return tones[tone]
 }
 
 function App() {
+  const [birthDate, setBirthDate] = useState(
+    () => window.localStorage.getItem(BIRTH_DATE_KEY) ?? getTodayInputDate(),
+  )
   const [weight, setWeight] = useState(() => getStoredNumber(WEIGHT_KEY, 4))
   const [feedsPerDay, setFeedsPerDay] = useState(() =>
     getStoredNumber(FEED_COUNT_KEY, 8),
   )
-  const [feedAmount, setFeedAmount] = useState(80)
+  const [feedAmount, setFeedAmount] = useState(60)
   const [entries, setEntries] = useState<FeedEntry[]>(() => getStoredEntries())
+
+  useEffect(() => {
+    window.localStorage.setItem(BIRTH_DATE_KEY, birthDate)
+  }, [birthDate])
 
   useEffect(() => {
     window.localStorage.setItem(WEIGHT_KEY, String(weight))
@@ -157,16 +168,21 @@ function App() {
     [entries],
   )
 
-  const dailyMin = weight * 150
-  const dailyMax = Math.min(weight * 160, 1000)
-  const perFeedMin = dailyMin / feedsPerDay
-  const perFeedMax = dailyMax / feedsPerDay
+  const ageDays = getAgeDays(birthDate)
+  const guide = getFeedingGuide(ageDays, weight, feedsPerDay)
+  const dailyMin = guide.dailyMin
+  const dailyMax = guide.dailyMax
+  const perFeedMin = guide.perFeedMin
+  const perFeedMax = guide.perFeedMax
+  const quickAmounts =
+    ageDays <= 3
+      ? [30, 40, 50, 60]
+      : ageDays <= 7
+        ? [60, 70, 80, 90]
+        : [60, 80, 100, 120]
   const totalAmount = todayEntries.reduce((sum, entry) => sum + entry.amount, 0)
-  const averageAmount =
-    todayEntries.length > 0 ? totalAmount / todayEntries.length : 0
   const remainingAmount = Math.max(0, dailyMin - totalAmount)
   const progress = Math.min(100, Math.round((totalAmount / dailyMin) * 100))
-  const status = getStatus(totalAmount, dailyMin, dailyMax)
   const lastEntry = todayEntries[0]
   const nextFeedText = lastEntry
     ? timeFormatter.format(
@@ -195,12 +211,6 @@ function App() {
     setFeedAmount(normalizedAmount)
   }
 
-  function deleteFeed(id: string) {
-    setEntries((currentEntries) =>
-      currentEntries.filter((entry) => entry.id !== id),
-    )
-  }
-
   function resetToday() {
     setEntries((currentEntries) =>
       currentEntries.filter((entry) => !isToday(new Date(entry.createdAt))),
@@ -227,6 +237,24 @@ function App() {
         </header>
 
         <section className="grid grid-cols-2 gap-3">
+          <label className="col-span-2 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <span className="text-sm font-semibold text-slate-600">
+              출생일
+            </span>
+            <div className="mt-3 flex items-center gap-3">
+              <input
+                className="h-12 min-w-0 flex-1 rounded-md border border-slate-200 bg-slate-50 px-3 text-base font-bold outline-none focus:border-sky-500 focus:bg-white"
+                type="date"
+                value={birthDate}
+                onChange={(event) => setBirthDate(event.target.value)}
+              />
+              <div className="rounded-md bg-sky-50 px-3 py-2 text-right text-sky-800">
+                <p className="text-xs font-semibold">생후</p>
+                <p className="text-base font-bold">{ageDays}일</p>
+              </div>
+            </div>
+          </label>
+
           <label className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <span className="text-sm font-semibold text-slate-600">
               현재 몸무게
@@ -275,23 +303,16 @@ function App() {
         </section>
 
         <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold text-slate-500">
-                하루 권장량
-              </p>
-              <p className="mt-1 text-3xl font-bold tracking-normal text-slate-950">
-                {formatMl(dailyMin)}~{formatMl(dailyMax)}
-              </p>
-            </div>
-            <div
-              className={`rounded-lg border px-3 py-2 text-right ${getToneClasses(
-                status.tone,
-              )}`}
-            >
-              <p className="text-xs font-semibold">상태</p>
-              <p className="mt-1 text-sm font-bold">{status.label}</p>
-            </div>
+          <div>
+            <p className="text-sm font-semibold text-slate-500">
+              하루 권장량
+            </p>
+            <p className="mt-1 text-3xl font-bold tracking-normal text-slate-950">
+              {formatMl(dailyMin)}~{formatMl(dailyMax)}
+            </p>
+            <p className="mt-2 text-sm font-semibold text-sky-700">
+              {guide.mode} · 분유 하루 상한 {formatMl(1000)}
+            </p>
           </div>
 
           <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-100">
@@ -303,14 +324,14 @@ function App() {
 
           <div className="mt-4 grid grid-cols-3 gap-2 text-center">
             <SummaryMetric
+              icon={<CalendarDays size={16} aria-hidden="true" />}
+              label="생후 일수"
+              value={`${ageDays}일`}
+            />
+            <SummaryMetric
               icon={<Droplets size={16} aria-hidden="true" />}
               label="오늘 총량"
               value={formatMl(totalAmount)}
-            />
-            <SummaryMetric
-              icon={<CalendarDays size={16} aria-hidden="true" />}
-              label="수유 횟수"
-              value={`${todayEntries.length}회`}
             />
             <SummaryMetric
               icon={<Clock3 size={16} aria-hidden="true" />}
@@ -320,7 +341,7 @@ function App() {
           </div>
 
           <div className="mt-4 rounded-lg bg-slate-50 px-3 py-3 text-sm leading-relaxed text-slate-600">
-            {status.message} 1회 권장량은{' '}
+            {guide.note} 1회 권장량은{' '}
             <strong className="text-slate-900">
               {formatMl(roundToFive(perFeedMin))}~
               {formatMl(roundToFive(perFeedMax))}
@@ -335,10 +356,11 @@ function App() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-bold tracking-normal text-slate-950">
-                수유 기록
+                수유량 추가
               </h2>
               <p className="mt-1 text-sm text-slate-500">
-                남은 최소 목표량 {formatMl(remainingAmount)}
+                {todayEntries.length}회 입력 · 남은 최소 목표량{' '}
+                {formatMl(remainingAmount)}
               </p>
             </div>
             <button
@@ -355,7 +377,11 @@ function App() {
           <div className="mt-4 grid grid-cols-4 gap-2">
             {quickAmounts.map((amount) => (
               <button
-                className="rounded-md border border-slate-200 bg-slate-50 px-2 py-3 text-sm font-bold text-slate-800 active:bg-sky-50"
+                className={`rounded-md border px-2 py-3 text-sm font-bold active:bg-sky-50 ${
+                  feedAmount === amount
+                    ? 'border-sky-500 bg-sky-50 text-sky-800'
+                    : 'border-slate-200 bg-slate-50 text-slate-800'
+                }`}
                 type="button"
                 key={amount}
                 onClick={() => setFeedAmount(amount)}
@@ -387,58 +413,6 @@ function App() {
               추가
             </button>
           </div>
-
-          <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
-            <div className="rounded-lg bg-emerald-50 px-3 py-3 text-emerald-800">
-              <p className="font-semibold">평균 1회량</p>
-              <p className="mt-1 text-xl font-bold">{formatMl(averageAmount)}</p>
-            </div>
-            <div className="rounded-lg bg-amber-50 px-3 py-3 text-amber-800">
-              <p className="font-semibold">분유 상한까지</p>
-              <p className="mt-1 text-xl font-bold">
-                {formatMl(Math.max(0, 1000 - totalAmount))}
-              </p>
-            </div>
-          </div>
-        </section>
-
-        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 className="text-lg font-bold tracking-normal text-slate-950">
-            오늘 내역
-          </h2>
-
-          {todayEntries.length > 0 ? (
-            <ul className="mt-3 divide-y divide-slate-100">
-              {todayEntries.map((entry) => (
-                <li
-                  className="flex items-center justify-between gap-3 py-3"
-                  key={entry.id}
-                >
-                  <div>
-                    <p className="text-base font-bold text-slate-900">
-                      {formatMl(entry.amount)}
-                    </p>
-                    <p className="mt-1 text-sm text-slate-500">
-                      {timeFormatter.format(new Date(entry.createdAt))}
-                    </p>
-                  </div>
-                  <button
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-md text-slate-400 active:bg-slate-100"
-                    type="button"
-                    onClick={() => deleteFeed(entry.id)}
-                    aria-label={`${formatMl(entry.amount)} 기록 삭제`}
-                    title="기록 삭제"
-                  >
-                    <Trash2 size={18} aria-hidden="true" />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className="mt-3 rounded-lg bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
-              아직 오늘 기록이 없습니다.
-            </div>
-          )}
         </section>
 
         <AdSlot label="광고 영역" />
