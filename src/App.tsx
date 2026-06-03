@@ -358,7 +358,7 @@ function App() {
                 className="rounded-md border border-slate-200 bg-slate-50 px-2 py-3 text-sm font-bold text-slate-800 active:bg-sky-50"
                 type="button"
                 key={amount}
-                onClick={() => addFeed(amount)}
+                onClick={() => setFeedAmount(amount)}
               >
                 {amount}ml
               </button>
@@ -476,7 +476,7 @@ function App() {
             onClick={() => addFeed()}
           >
             <Plus size={18} aria-hidden="true" />
-            기록
+            추가
           </button>
         </div>
       </div>
